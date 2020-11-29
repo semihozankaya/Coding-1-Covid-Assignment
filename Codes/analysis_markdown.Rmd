@@ -1,0 +1,315 @@
+---
+title: "Joint Assignment for DA2 and Coding 1"
+author: "by Ozan Kaya (#2003859)"
+date: "November 29, 2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+options(scipen=999)
+library(tidyverse)
+library(scales)
+library(lspline)
+library(estimatr)
+library(texreg)
+library(ggthemes)
+library(car)
+library(xtable)
+library(pander)
+my_url <- "https://raw.githubusercontent.com/semihozankaya/Coding-1-Covid-Assignment/master/Data/Clean/covid_pop_07-10-2020_clean.csv"
+df <- read_csv( my_url )
+```
+
+## Introduction
+
+\small
+
+This document is prepared as the first assignment for the Data Analysis 2 course in Central European University and it tries to document the relationship between confirmed covid cases and deaths in 07/10/2020 for various countries around the globe. To be more precise, I am interested to see if mortality rates differ accross countries and to see the pattern of association of mortality rates against confirmed covid cases in 167 distinct countries. 
+
+All of the input and output files can be seen at <https://github.com/semihozankaya/Coding-1-Covid-Assignment>.
+
+\normalsize
+
+## First Controls
+
+```{r, fig.show='hold', figures-side, out.width = "33%", warning = FALSE, message = FALSE}
+# Quick check of the variables I have been assigned
+df_sub <- df %>% select(Death, Confirmed)
+df_sub %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~key, scales = "free") +
+  geom_histogram(bins = 10)+
+  theme_tufte()
+
+
+# Also creating new variable: per capita deaths and cases in percentages:
+
+df <- df %>% mutate( death_per_capita = Death/Population )
+df <- df %>% mutate( case_per_capita = Confirmed/Population )
+
+
+df %>% select(death_per_capita, case_per_capita) %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~key, scales = "free") +
+  geom_histogram(bins = 10)+
+  theme_tufte() 
+
+# Dropping the 15 countries that has 0 covid related deaths 
+df2 <- df %>% filter(Death != 0)
+
+# Creating new variables
+df2 <- df2 %>% mutate( ln_deaths_pc = log(death_per_capita),
+                     ln_cases_pc = log(case_per_capita))
+
+
+# Lets also show the per capita measures in percentages
+df2$death_per_capita <- df2$death_per_capita*100 
+df2$case_per_capita <- df2$case_per_capita*100
+
+df2 %>% select(ln_deaths_pc, ln_cases_pc) %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~key, scales = "free") +
+  geom_histogram(bins = 10)+
+  theme_tufte() 
+```
+
+\small
+
+If we look at the first graph above, the confirmed covid cases shows a very skewed distribution. Considering the difference in country populations, this is expected. Accordingly, the covid deaths shows a very similar distribution with a certain percentage of confirmed cases resulted with the patients' deaths.
+
+Per capita values also show a skewed distribution in the second graph, although a little less so. This could be due to the different testing procedures or recording methodologies between countries. Here the highest per capita case values consists of western countries as well as relatively small countries in terms of population. We can speculate that these countries can afford more testing for their citizens, thus record more cases.
+
+This distribution resembles a log-normal distribution with some outlying values in the right tail. We can think about a log transformation to correct for skewness and outliers for both of the variables. I am also going to transform the per capita measures to show as percentages so that it can be read easier.
+
+It also seems that we have 0 deaths in 15 countries. Some of them are relatively small countries in terms of population but some of them are actually quite big. Among them, Uganda for instance had recorded 1000 covid cases but 0 deaths. 
+
+The mean death rate for our date seems to be 3%. The median is 2%. I am comfortable with dropping the beforementioned 15 countries from our dataset, either because they are small in size or the death counts seems unlikely. 
+
+The final distribution of our variables can be seen on the last graph above. The skew is not as problematic as before and the distribution resembles a normal distribution.
+
+\normalsize
+
+\pagebreak
+
+## Checking scatter-plots
+
+```{r, out.width = '33%', warning = FALSE, message = FALSE}
+ggplot( df2 , aes(y = death_per_capita, x = case_per_capita)) +
+  geom_point() +
+  geom_smooth(method="loess")+
+  labs(x = "Cases Per Capita",y = "Deaths Per Capita", title = "Covid Statistics in Percentages for 07/10/2020") 
+
+ggplot( df2 , aes(y = death_per_capita, x = case_per_capita)) +
+  geom_point() +
+  geom_smooth(method="loess")+
+  labs(x = "Cases Per Capita, ln scale",y = "Deaths Per Capita", 
+       title = "Covid Statistics in Percentages for 07/10/2020") +
+  scale_x_continuous( trans = log_trans(),  breaks = waiver(), labels = number_format(accuracy = 0.000001) )
+
+ggplot( df2 , aes(y = death_per_capita, x = case_per_capita))  +
+  geom_point() +
+  geom_smooth(method="loess")+
+  labs(x = "Cases Per Capita, ln scale",y = "Deaths Per Capita, ln scale", 
+       title = "Covid Statistics in Percentages for 07/10/2020") +
+  scale_x_continuous( trans = log_trans(),  breaks = waiver(), labels = number_format(accuracy = 0.0001))+
+  scale_y_continuous( trans = log_trans(), breaks = waiver(), labels = number_format(accuracy = 0.0001)) 
+```
+
+\small
+
+The first graph is deaths per capita against confirmed covid cases per capita in a linear sclae. As can be seen, there is clearly a non linear pattern of association. Most of the observations lies on the bottom left of the graph. This is not very informative as it is.
+
+The second graph is in a log scale in the x axis. The data shows very small values of death per capita for a relatively large range of cases per capita. Within a log scale for the x axis, we can see that a large subset of death per capita values have clustered around 0.00 to 0.01. So perhaps we can benefit from a change in scale for Y axis as well.
+
+After changing both of the axes' scales to log scaling, as we have suspected, lots of deaths per capita values have been clustered between 0 and 0.001. Thus, changing the scale seems to be resulting with a more informative visualization for our case. The fit is much better now. It is almost linear. 
+
+The log-log model would help us overcome the skewness in our data and ease out some of the outlying values as well. We will continue with the ln transformations of our values.
+
+\normalsize
+
+## Testing models:
+
+```{r}
+# Adding powers of the variables to our dataset:
+df2 <- df2 %>% mutate(ln_cases_pc = log(case_per_capita),
+                     ln_cases_pc_sq = ln_cases_pc^2,
+                     ln_cases_pc_cub = ln_cases_pc^3)
+```
+
+\small
+
+1) First Model: $ln\_deaths\_pc = \alpha + \beta * ln\_cases\_pc$
+```{r, out.width = '50%', warning = FALSE, message = FALSE, results='asis'}
+reg1 <- lm_robust( ln_deaths_pc ~ ln_cases_pc , data = df2 , se_type = "HC2" )
+sum_reg1 <- summary(reg1)
+sum_reg1$coefficients[7:8] <- round(sum_reg1$coefficients[7:8], digits = 6)
+sum_reg1_2 <- matrix(sum_reg1$coefficients[1:8], ncol = 4, nrow = 2, dimnames = list(c("Intercept", "ln_cases_pc"), c("Estimate", "Std. Error", "t value", "Pr(>|t|")))
+sum_reg1_2 %>% pander()
+```
+
+First model shows a very robust $\beta$ estimate of 0.9743 (with a t statistic of 18.62). Here, note that $\beta$ is $\frac{dY}{dX}$, which can be rewritten as $\frac{dY}{Y}$ over $\frac{dX}{X}$ since both x and y are ln transformations of our original variables, which is basically the elasticity coefficient of deaths per capita with respect to cases per capita. 
+
+Here, we can interpret the regression coefficient as a relative change in the covid cases per capita between countries are associated with a 97% relative change in covid deaths per capita. The elasticity is constant between countries in this model. The fit seems relatively strong (with adjusted R square to be 0.74 and F-statistic being 346, the model seems statistically significant in overall.)
+
+Our findings are intiutive as well. We shouldn't expect death rate of the Covid-19 to change between countries. Covid doesn't seem to differentiate between cultures or geography. 
+
+\normalsize
+
+2) Second Model: $ln\_deaths\_pc = \alpha + \beta_1 * ln\_cases\_pc + \beta_2 * ln\_cases\_pc^2$
+
+\small
+
+```{r, out.width = '50%',  out.length = '50%', warning = FALSE, message = FALSE}
+reg2 <- lm_robust( ln_deaths_pc ~ ln_cases_pc + ln_cases_pc_sq , data = df2 )
+sum_reg2 <- summary(reg2)
+sum_reg2$coefficients[10:12] <- round(sum_reg2$coefficients[10:12], digits = 6)
+sum_reg2_2 <- matrix(sum_reg2$coefficients[1:12], ncol = 4, nrow = 3, dimnames = list(c("Intercept", "ln_cases_pc", "ln_cases_pc_sq"), c("Estimate", "Std. Error", "t value", "Pr(>|t|")))
+sum_reg2_2 %>% pander()
+
+```
+
+In our second model, $\beta_2$ is not statistically significant. Adjusted R square is actually smaller than our first model. F-statistic is also considerably lower than our first model. The overall model is still statistically significant though. But individually $\beta_2$ is insignificant. 
+
+$\beta_1$ shows a less stronger pattern of association between x and y than our first model. 
+
+Since the visual inspection showed no non-linear association in our first model and since we don't expect higher confirmed cases per capita to change the mortality rate of the virus, the squared variable being statistically insignificant is also in line with intiution and is not surprising.
+
+\normalsize
+
+3) Third Model: $ln\_deaths\_pc = \alpha + \beta_1 * ln\_cases\_pc + \beta_2 * ln\_cases\_pc^2 + \beta_3 * ln\_cases\_pc^3$
+
+\small
+
+```{r, out.width = '50%',  out.length = '50%', warning = FALSE, message = FALSE}
+reg3 <- lm_robust( ln_deaths_pc ~ ln_cases_pc + ln_cases_pc_sq + ln_cases_pc_cub , data = df2 )
+sum_reg3 <- summary(reg3)
+sum_reg3$coefficients[13:16] <- round(sum_reg3$coefficients[13:16], digits = 6)
+sum_reg3_2 <- matrix(sum_reg3$coefficients[1:16], ncol = 4, nrow = 4, dimnames = list(c("Intercept", "ln_cases_pc", "ln_cases_pc_sq", "ln_cases_pc_cub"), c("Estimate", "Std. Error", "t value", "Pr(>|t|")))
+sum_reg3_2 %>% pander()
+```
+
+In our third model, we also included the cubic transformation of our independent variable. The variables are all individually statistically significant in 90% significance level. Even though, the model is alltogether statistically significant, the F-statistic has declined to a third of our first model. Adjusted R square on the other hand improved very slightly. 
+
+The third model seems to have better represent the dispersion in both ends of the ln_cases_pc. However, its interpretation is a lot harder than our first model. Here, we are increasing complexity for a very little extra information.
+
+\normalsize
+
+4) Fourth Model: $ln\_deaths\_pc = \alpha + \beta_1 * ln\_cases\_pc*(ln\_cases\_pc < 0.05)+\beta_2*ln\_cases\_pc*(ln\_cases\_pc>1)$
+
+\small
+
+```{r, out.width = '50%',  out.length = '50%', warning = FALSE, message = FALSE}
+#1st define the cutoff for cases per capita
+# The pattern of association is rather linear and I am not sure about the cutoff points.
+# So, I am choosing the cutoff points in order to understand the dispersion on the tails of cases per capita 
+# and isolate the values in the middle where most of the data lies on.
+cutoff <- c(0.005, 1)
+# 2nd we use a log transformation -> cutoff needs to be transformed as well
+cutoff_ln<- log( cutoff )
+reg4 <- lm_robust(ln_deaths_pc ~ lspline( ln_cases_pc , cutoff_ln ), data = df2 )
+sum_reg4 <- summary(reg4)
+sum_reg4$coefficients[13:16] <- round(sum_reg4$coefficients[13:16], digits = 6)
+sum_reg4_2 <- matrix(sum_reg4$coefficients[1:16], ncol = 4, nrow = 4, dimnames = list(c("Intercept", "ln_cases_pc_cutoff1", "ln_cases_pc_cutoff2", "ln_cases_pc_cutoff3"), c("Estimate", "Std. Error", "t value", "Pr(>|t|")))
+sum_reg4_2 %>% pander()
+```
+
+In our fourth model, we can see that before the first cutoff point, the slope coefficient is 0.90, suggesting a 90% association of deaths per capita in relative changes of confirmed cases per capita below countries with 0.005 percent infection rate. $\beta_1$ is statistically significant but its standard error is considerably large. This could be due to the small sample size as well.
+
+$\beta_2$ also shows a similar pattern of association. It is very robust with a t statistic of almost 17 and it implies an association of 102 percent relative change between relative changes in cases per capita in countries between 0.005 percent and 1 percent infection rates.
+
+$\beta_3$ on the other hand, is not statistically significant and shows a negative pattern between our variables.
+
+This model has the highest adjusted R square among the alternative models. Its F statistic is one of the lowest but the model is still very significant alltogether. 
+
+However, this approach is again overly complex and in fact it is identical with dropping the outlying values from our analysis. Even though these outlying values might show some faulty record keeping, fraud or differences in methodologies, our first model implies a very similar result with a much simpler approach.
+
+I believe that we can comfortably choose the first model for our analysis.
+
+\normalsize
+
+\pagebreak
+
+5) Visual Inspections of the Models
+
+
+```{r,  fig.show='hold', out.width = '50%',  out.length = '50%', warning = FALSE, message = FALSE}
+# Visual inspection of the 1st model
+ggplot( data = df2, aes( y = ln_deaths_pc, x = ln_cases_pc ) ) + 
+  geom_point( color='blue') +
+  geom_smooth( method = lm , color = 'red' ) +
+  labs(x = "ln(Cases Per Capita) ",y = "ln(Deaths Per Capita)", 
+       title = "Visualization of the First Model")
+# Weighted visualization of the first model
+ggplot(data = df2, aes(y = ln_deaths_pc, x = ln_cases_pc)) +
+  geom_point(data = df2, aes(size=Population),  color = 'blue', shape = 16, alpha = 0.6,  show.legend=F) +
+  geom_smooth(aes(weight = Population), method = "lm", color='red') +
+  labs(x = "ln(Cases Per Capita) ",y = "ln(Deaths Per Capita)", 
+       title = "Weighted Visualization of the First Model")
+```
+
+```{r,  fig.show='hold', out.width = '33%',  out.length = '50%', warning = FALSE, message = FALSE}
+# Visual inspection of the 2nd model
+ggplot( data = df2, aes( y = ln_deaths_pc, x = ln_cases_pc ) ) + 
+  geom_point( color='blue') +
+  geom_smooth( formula = y ~ poly(x,2) , method = lm , color = 'red' )+ 
+    labs(x = "ln(Cases Per Capita) ",y = "ln(Deaths Per Capita)", 
+       title = "Visualization of the Second Model")
+# Visual inspection of the 3rd model
+ggplot( data = df2, aes( y = ln_deaths_pc, x = ln_cases_pc ) ) + 
+  geom_point( color='blue') +
+  geom_smooth( formula = y ~ poly(x,3) , method = lm , color = 'red' )+
+    labs(x = "ln(Cases Per Capita) ",y = "ln(Deaths Per Capita)", 
+       title = "Visualization of the Third Model")
+
+# Visual inspection of the 4th model
+ggplot( data = df2, aes( y = ln_deaths_pc, x = ln_cases_pc ) ) + 
+  geom_point( color='blue') +
+  geom_smooth( formula = y ~ lspline(x,cutoff_ln) , method = lm , color = 'red' )+
+    labs(x = "ln(Cases Per Capita) ",y = "ln(Deaths Per Capita)", 
+       title = "Visualization of the Fourth Model")
+```
+
+## Residual analysis.
+```{r}
+# Get the predicted y values from the model
+df2$reg1_y_pred <- reg1$fitted.values
+# Calculate the errors of the model
+df2$reg1_res <- df2$ln_deaths_pc - df2$reg1_y_pred 
+```
+
+1) Find countries with largest negative errors
+
+\small
+```{r, out.width = '50%',  out.length = '50%', warning = FALSE, message = FALSE}
+df2 %>% top_n( -5 , reg1_res ) %>% 
+  select( Country , Confirmed , Death, ln_deaths_pc, reg1_res ) %>%
+  arrange(reg1_res)
+```
+\normalsize
+
+2) Find countries with largest positive errors
+
+\small
+```{r, out.width = '50%',  out.length = '50%', warning = FALSE, message = FALSE}
+df2 %>% top_n( 5 , reg1_res ) %>% 
+  select( Country , Confirmed , Death, ln_deaths_pc, reg1_res ) %>%
+  arrange(-reg1_res)
+```
+\normalsize
+
+## Testing hypothesis
+
+\small
+
+The most common test is already tested where H0 is $\beta$ = 0, HA: $\beta$ is not zero and the t statistic can be find in the regression summary of our first model and it is 18.62. $\beta$ is statistically different than 0 in 99.9 significance leve, even higher. We can reject the null. 
+
+\normalsize

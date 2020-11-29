@@ -1,0 +1,33 @@
+
+\begin{table}
+\begin{center}
+\begin{tabular}{l c c c c}
+\hline
+ & Ln(Per Capita Cases) & Ln(Per Capita Cases) - quadratic & Ln(Per Capita Cases) - cubic & Ln(Per Capita Cases) - PLS \\
+\hline
+(Intercept)                         & $-3.86^{*}$       & $-3.93^{*}$       & $-4.04^{*}$       & $-4.32^{*}$       \\
+                                    & $ [-4.19; -3.53]$ & $ [-4.42; -3.45]$ & $ [-4.52; -3.55]$ & $ [-7.12; -1.52]$ \\
+ln\_cases\_pc                       & $0.97^{*}$        & $0.89^{*}$        & $0.49$            &                   \\
+                                    & $ [ 0.87;  1.08]$ & $ [ 0.56;  1.23]$ & $ [-0.08;  1.07]$ &                   \\
+ln\_cases\_pc\_sq                   &                   & $-0.01$           & $-0.20$           &                   \\
+                                    &                   & $ [-0.06;  0.04]$ & $ [-0.41;  0.01]$ &                   \\
+ln\_cases\_pc\_cub                  &                   &                   & $-0.02$           &                   \\
+                                    &                   &                   & $ [-0.04;  0.00]$ &                   \\
+lspline(ln\_cases\_pc, cutoff\_ln)1 &                   &                   &                   & $0.91^{*}$        \\
+                                    &                   &                   &                   & $ [ 0.41;  1.40]$ \\
+lspline(ln\_cases\_pc, cutoff\_ln)2 &                   &                   &                   & $1.02^{*}$        \\
+                                    &                   &                   &                   & $ [ 0.90;  1.14]$ \\
+lspline(ln\_cases\_pc, cutoff\_ln)3 &                   &                   &                   & $-0.62$           \\
+                                    &                   &                   &                   & $ [-2.27;  1.02]$ \\
+\hline
+R$^2$                               & $0.74$            & $0.74$            & $0.75$            & $0.75$            \\
+Adj. R$^2$                          & $0.74$            & $0.74$            & $0.74$            & $0.74$            \\
+Num. obs.                           & $167$             & $167$             & $167$             & $167$             \\
+RMSE                                & $1.00$            & $1.00$            & $0.99$            & $0.98$            \\
+\hline
+\multicolumn{5}{l}{\scriptsize{$^*$ Null hypothesis value outside the confidence interval.}}
+\end{tabular}
+\caption{Modelling mortality and confirmed covid cases accross countries}
+\label{table:coefficients}
+\end{center}
+\end{table}
